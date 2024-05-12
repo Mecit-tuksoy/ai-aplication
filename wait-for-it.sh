@@ -15,3 +15,5 @@ done
 echo "Service is available!"
 
 exec $cmd
+
+#docker-compose dosyasında girilecek komut ile çalıştırılacak dosya
