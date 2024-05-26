@@ -104,9 +104,14 @@ resource "null_resource" "config" {
   }
 
   provisioner "file" {
-    source = "./ansible.cfg"
-    destination = "/home/ec2-user/ansible.cfg"
+    source = "./.ansible.cfg"
+    destination = "/home/ec2-user/.ansible.cfg"
   }
+
+  provisioner "local-exec" {
+    command = "cp -r ./ansible /home/ec2-user/"
+  }
+
 
   provisioner "file" {
     # Do not forget to define your key file path correctly!
