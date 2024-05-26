@@ -1,4 +1,4 @@
-- name: install docker and config
+- name: Common setup for all servers
   hosts: all
   become: true
   tasks:
@@ -67,3 +67,97 @@
       ansible.builtin.git:
         repo: "https://github.com/Mecit-tuksoy/ai-aplication.git"
         dest: "/home/ec2-user/ai-application"
+
+
+
+- name: Configure backend application
+  hosts: backend
+  become: true
+  tasks:
+    - name: Copy ip.txt to backend
+      ansible.builtin.copy:
+        src: /home/ec2-user/ip.txt
+        dest: /home/ec2-user/ip.txt
+        mode: '0644'
+
+    - name: Replace deid_db with actual MySQL IP in app.py
+      ansible.builtin.shell: |
+        ip=$(grep -oP "mysql private ip=\K[0-9.]+$" /home/ec2-user/ip.txt)
+        sed -i "s/deid_db/$ip/" /home/ec2-user/ai-application/backend/app.py
+
+    # - name: Replace deid_db with actual MySQL IP in app.py
+    #   ansible.builtin.command: >
+    #     sed -i 's/deid_db/$(grep -oP "mysql private ip=\K[0-9.]+$" /home/ec2-user/ip.txt)/' /home/ec2-user/ai-application/backend/app.py
+
+
+    - name: Build backend Docker image
+      ansible.builtin.command:
+        cmd: docker build -t backend /home/ec2-user/ai-application/backend
+      args:
+        chdir: /home/ec2-user/ai-application/backend
+
+    - name: Run backend container
+      ansible.builtin.docker_container:
+        name: backend
+        image: backend
+        state: started
+        ports:
+          - "5000:5000"
+        restart_policy: always
+
+
+
+
+
+- name: Configure frontend application
+  hosts: frontend
+  become: true
+  tasks:
+    - name: Copy ip.txt to frontend
+      ansible.builtin.copy:
+        src: /home/ec2-user/ip.txt
+        dest: /home/ec2-user/ip.txt
+        mode: '0644'
+
+    - name: Replace localhost with actual backend IP in index.html
+      ansible.builtin.shell: |
+        backend_ip=$(grep -oP "backend public ip=\K[0-9.]+$" /home/ec2-user/ip.txt)
+        sed -i "s|localhost|$backend_ip|" /home/ec2-user/ai-application/frontend/index.html
+
+    - name: Build frontend Docker image
+      ansible.builtin.command:
+        cmd: docker build -t frontend /home/ec2-user/ai-application/frontend
+      args:
+        chdir: /home/ec2-user/ai-application/frontend
+
+    - name: Run frontend container
+      ansible.builtin.docker_container:
+        name: frontend
+        image: frontend
+        state: started
+        ports:
+          - "80:80"
+        restart_policy: always
+
+
+- name: Configure MySQL server
+  hosts: mysql
+  become: true
+  vars_files:
+    - vault.yml
+  tasks:
+    - name: Run MySQL container
+      ansible.builtin.docker_container:
+        name: deid_db
+        image: mysql:5.7
+        state: started
+        ports:
+          - "3306:3306"
+        env:
+          MYSQL_ROOT_PASSWORD: "{{ MYSQL_ROOT_PASSWORD }}"
+          MYSQL_USER: "{{ MYSQL_USER }}"
+          MYSQL_PASSWORD: "{{ MYSQL_PASSWORD }}"
+          MYSQL_DATABASE: "{{ MYSQL_DATABASE }}"
+        volumes:
+          - dbdata:/var/lib/mysql
+        restart_policy: always
