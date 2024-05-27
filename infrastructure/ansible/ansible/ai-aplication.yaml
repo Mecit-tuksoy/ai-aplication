@@ -63,11 +63,38 @@
         state: started
         enabled: yes
 
+    - name: Ensure AI application directory is clean
+      ansible.builtin.file:
+        path: /home/ec2-user/ai-application
+        state: absent
+        
     - name: Clone AI application repository
       ansible.builtin.git:
         repo: "https://github.com/Mecit-tuksoy/ai-aplication.git"
         dest: "/home/ec2-user/ai-application"
 
+
+- name: Configure MySQL server
+  hosts: mysql
+  become: true
+  vars_files:
+    - vault.yml
+  tasks:
+    - name: Run MySQL container
+      ansible.builtin.docker_container:
+        name: deid_db
+        image: mysql:5.7
+        state: started
+        ports:
+          - "3306:3306"
+        env:
+          MYSQL_ROOT_PASSWORD: "{{ MYSQL_ROOT_PASSWORD }}"
+          MYSQL_USER: "{{ MYSQL_USER }}"
+          MYSQL_PASSWORD: "{{ MYSQL_PASSWORD }}"
+          MYSQL_DATABASE: "{{ MYSQL_DATABASE }}"
+        volumes:
+          - dbdata:/var/lib/mysql
+        restart_policy: always
 
 
 - name: Configure backend application
@@ -82,12 +109,13 @@
 
     - name: Replace deid_db with actual MySQL IP in app.py
       ansible.builtin.shell: |
-        ip=$(grep -oP "mysql private ip=\K[0-9.]+$" /home/ec2-user/ip.txt)
-        sed -i "s/deid_db/$ip/" /home/ec2-user/ai-application/backend/app.py
+        ip=$(grep "mysql public ip=" /home/ec2-user/ip.txt | awk -F'=' '{print $2}' | tr -d '[:space:]')
+        sed -i "s/app.config\['MYSQL_DATABASE_HOST'\] = \"deid_db\"/app.config\['MYSQL_DATABASE_HOST'\] = \"$ip\"/" /home/ec2-user/ai-application/backend/app.py
+
 
     # - name: Replace deid_db with actual MySQL IP in app.py
     #   ansible.builtin.command: >
-    #     sed -i 's/deid_db/$(grep -oP "mysql private ip=\K[0-9.]+$" /home/ec2-user/ip.txt)/' /home/ec2-user/ai-application/backend/app.py
+    #     sed -i 's/deid_db/$(grep -oP "mysql public ip=\K[0-9.]+$" /home/ec2-user/ip.txt)/' /home/ec2-user/ai-application/backend/app.py
 
 
     - name: Build backend Docker image
@@ -121,7 +149,7 @@
 
     - name: Replace localhost with actual backend IP in index.html
       ansible.builtin.shell: |
-        backend_ip=$(grep -oP "backend public ip=\K[0-9.]+$" /home/ec2-user/ip.txt)
+        backend_ip=$(grep "backend public ip=" /home/ec2-user/ip.txt | awk -F'=' '{print $2}' | tr -d '[:space:]')
         sed -i "s|localhost|$backend_ip|" /home/ec2-user/ai-application/frontend/index.html
 
     - name: Build frontend Docker image
@@ -137,27 +165,4 @@
         state: started
         ports:
           - "80:80"
-        restart_policy: always
-
-
-- name: Configure MySQL server
-  hosts: mysql
-  become: true
-  vars_files:
-    - vault.yml
-  tasks:
-    - name: Run MySQL container
-      ansible.builtin.docker_container:
-        name: deid_db
-        image: mysql:5.7
-        state: started
-        ports:
-          - "3306:3306"
-        env:
-          MYSQL_ROOT_PASSWORD: "{{ MYSQL_ROOT_PASSWORD }}"
-          MYSQL_USER: "{{ MYSQL_USER }}"
-          MYSQL_PASSWORD: "{{ MYSQL_PASSWORD }}"
-          MYSQL_DATABASE: "{{ MYSQL_DATABASE }}"
-        volumes:
-          - dbdata:/var/lib/mysql
         restart_policy: always

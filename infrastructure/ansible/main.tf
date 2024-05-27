@@ -109,8 +109,14 @@ resource "null_resource" "config" {
   }
 
   provisioner "local-exec" {
-    command = "cp -r ./ansible /home/ec2-user/"
-  }
+    command = "tar -czf ansible.tar.gz -C ./ansible ."
+}
+
+  provisioner "file" {
+    source      = "ansible.tar.gz"
+    destination = "/home/ec2-user/ansible.tar.gz"
+}
+
 
 
   provisioner "file" {
@@ -132,7 +138,9 @@ resource "null_resource" "config" {
       "chmod 400 ${var.mykey}.pem",
       "echo frontend private ip=${aws_instance.nodes[1].private_ip} >> ip.txt",
       "echo mysql private ip=${aws_instance.nodes[2].private_ip} >> ip.txt",
+      "echo mysql public ip=${aws_instance.nodes[2].public_ip} >> ip.txt",
       "echo backend public ip=${aws_instance.backend[0].public_ip} >> ip.txt",
+      "echo backend private ip=${aws_instance.backend[0].private_ip} >> ip.txt",
     ]
   }
 }
